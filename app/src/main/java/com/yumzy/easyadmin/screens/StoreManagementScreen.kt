@@ -145,7 +145,7 @@ fun StoreManagementScreen(navController: NavController) {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Yumzy Store Management") }) },
+        topBar = { TopAppBar(title = { Text("Easy Store Management") }) },
         floatingActionButton = {
             when (selectedTabIndex) {
                 0 -> { // Categories tab

@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "159099178760-bo1qn5ud3jcd76butroa0rb4im79hufk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yumzy.easyadmin",
+            "certificate_hash": "7a2aa757606b1fa1d109eb5823d103168ab7192e"
+          }
+        },
+        {
           "client_id": "159099178760-d5fgv91td8epre725mt467qghst0r260.apps.googleusercontent.com",
           "client_type": 3
         }
