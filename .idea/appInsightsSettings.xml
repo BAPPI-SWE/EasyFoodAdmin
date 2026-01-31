@@ -22,10 +22,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.yumzy.admin" />
-                  <option name="mobileSdkAppId" value="1:1096387078386:android:e94cd25a24db440966886b" />
-                  <option name="projectId" value="yumzy-bappi" />
-                  <option name="projectNumber" value="1096387078386" />
+                  <option name="appId" value="com.yumzy.easyadmin" />
+                  <option name="mobileSdkAppId" value="1:159099178760:android:c45fdfb214eef90feb66bd" />
+                  <option name="projectId" value="easyfood-bappi" />
+                  <option name="projectNumber" value="159099178760" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

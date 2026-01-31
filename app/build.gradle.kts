@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.yumzy.admin"
+    namespace = "com.yumzy.easyadmin"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.yumzy.admin"
+        applicationId = "com.yumzy.easyadmin"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -80,5 +80,10 @@ dependencies {
     implementation("androidx.compose.material3:material3-window-size-class:1.2.1")
 
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+
+    implementation ("com.google.android.gms:play-services-auth:21.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+
+
 
 }
