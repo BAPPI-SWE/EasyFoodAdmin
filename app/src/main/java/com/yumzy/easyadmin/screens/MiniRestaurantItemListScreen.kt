@@ -52,6 +52,8 @@ fun MiniRestaurantItemListScreen(
     var isLoading by remember { mutableStateOf(true) }
     var showDialog by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<StoreItem?>(null) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var itemToDelete by remember { mutableStateOf<StoreItem?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -131,7 +133,8 @@ fun MiniRestaurantItemListScreen(
                             showDialog = true
                         },
                         onDeleteClick = {
-                            deleteItem(item)
+                            itemToDelete = item
+                            showDeleteConfirmation = true
                         },
                         onStockChange = { newStockStatus ->
                             val stockValue = if (newStockStatus) "yes" else "no"
@@ -199,6 +202,40 @@ fun MiniRestaurantItemListScreen(
                 },
                 fixedMiniResId = miniResId,
                 fixedSubCategory = subCategoryName
+            )
+        }
+
+        // Delete Confirmation Dialog
+        if (showDeleteConfirmation && itemToDelete != null) {
+            AlertDialog(
+                onDismissRequest = {
+                    showDeleteConfirmation = false
+                    itemToDelete = null
+                },
+                title = { Text("Delete Item?") },
+                text = { Text("Are you sure you want to delete '${itemToDelete?.name}'? This action cannot be undone.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            itemToDelete?.let { deleteItem(it) }
+                            showDeleteConfirmation = false
+                            itemToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirmation = false
+                            itemToDelete = null
+                        }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
             )
         }
     }
