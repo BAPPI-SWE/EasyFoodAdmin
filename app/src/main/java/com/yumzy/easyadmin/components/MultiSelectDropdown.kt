@@ -15,7 +15,8 @@ fun MultiSelectDropdown(
     label: String,
     options: List<String>,
     selectedOptions: List<String>,
-    onSelectionChanged: (List<String>) -> Unit
+    onSelectionChanged: (List<String>) -> Unit,
+    showSelectAll: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -36,6 +37,37 @@ fun MultiSelectDropdown(
             onDismissRequest = { expanded = false },
             modifier = Modifier.fillMaxWidth()
         ) {
+            // Select All / Deselect All Button
+            if (showSelectAll && options.isNotEmpty()) {
+                val allSelected = selectedOptions.size == options.size
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = allSelected,
+                                onCheckedChange = null
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (allSelected) "Deselect All Locations" else "Select All Locations",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    onClick = {
+                        if (allSelected) {
+                            // Deselect all
+                            onSelectionChanged(emptyList())
+                        } else {
+                            // Select all
+                            onSelectionChanged(options)
+                        }
+                    }
+                )
+                HorizontalDivider()
+            }
+
             options.forEach { option ->
                 val isSelected = selectedOptions.contains(option)
                 DropdownMenuItem(

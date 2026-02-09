@@ -764,7 +764,8 @@ fun AddEditMiniRestaurantDialog(
                     label = "Available Locations",
                     options = allLocations,
                     selectedOptions = selectedLocations,
-                    onSelectionChanged = { selectedLocations = it }
+                    onSelectionChanged = { selectedLocations = it },
+                    showSelectAll = true
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -949,7 +950,8 @@ fun EditCategoryDialog(
                     label = "Available Locations",
                     options = allLocations,
                     selectedOptions = selectedLocations,
-                    onSelectionChanged = { selectedLocations = it }
+                    onSelectionChanged = { selectedLocations = it },
+                    showSelectAll = true
                 )
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
