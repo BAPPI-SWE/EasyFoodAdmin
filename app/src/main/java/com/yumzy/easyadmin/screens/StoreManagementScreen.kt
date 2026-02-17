@@ -861,7 +861,20 @@ fun EditCategoryDialog(
             Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (subCategory == null) "Add Sub-Category" else "Edit Sub-Category", style = MaterialTheme.typography.titleLarge)
 
-                TextField(value = name, onValueChange = { name = it }, label = { Text("Sub-Category Name") })
+                TextField(
+                    value = name,
+                    onValueChange = { if (subCategory == null) name = it },
+                    label = { Text("Sub-Category Name") },
+                    readOnly = subCategory != null,
+                    colors = if (subCategory != null) TextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) else TextFieldDefaults.colors(),
+                    trailingIcon = if (subCategory != null) {
+                        { Icon(Icons.Default.Lock, contentDescription = "Name is locked", tint = MaterialTheme.colorScheme.outline) }
+                    } else null
+                )
 
                 // UPDATED: Priority Field
                 TextField(
