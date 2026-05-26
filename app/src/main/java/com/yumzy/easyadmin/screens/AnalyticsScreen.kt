@@ -42,7 +42,6 @@ data class RestaurantDailyStats(
     val totalOrders: Int
 )
 
-// Corrected AnalyticsOrder blueprint
 data class AnalyticsOrder(
     val riderId: String? = null,
     val restaurantId: String? = null,
@@ -53,8 +52,12 @@ data class AnalyticsOrder(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnalyticsScreen(navController: NavController) {
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
-    var showDatePicker by remember { mutableStateOf(false) }
+    // --- DATE RANGE STATE (replaces single selectedDate) ---
+    var startDate by remember { mutableStateOf(LocalDate.now()) }
+    var endDate by remember { mutableStateOf(LocalDate.now()) }
+
+    // Which picker is showing: "start", "end", or null
+    var showDatePickerFor by remember { mutableStateOf<String?>(null) }
     var showTimeRangePicker by remember { mutableStateOf(false) }
     var startTime by remember { mutableStateOf<LocalTime?>(null) }
     var endTime by remember { mutableStateOf<LocalTime?>(null) }
@@ -64,7 +67,8 @@ fun AnalyticsScreen(navController: NavController) {
     var isLoading by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(selectedDate, startTime, endTime) {
+    // Re-fetch whenever date range or time filter changes
+    LaunchedEffect(startDate, endDate, startTime, endTime) {
         isLoading = true
         val db = Firebase.firestore
 
@@ -72,44 +76,42 @@ fun AnalyticsScreen(navController: NavController) {
             db.collection("riders").get().await().documents.associate { doc ->
                 doc.id to (doc.getString("name") ?: "Unknown Rider")
             }
-        } catch (e: Exception) {
-            emptyMap()
-        }
+        } catch (e: Exception) { emptyMap() }
 
         val restaurantsMap = try {
             db.collection("restaurants").get().await().documents.associate { doc ->
                 doc.id to (doc.getString("name") ?: "Unknown Restaurant")
             }
-        } catch (e: Exception) {
-            emptyMap()
-        }
+        } catch (e: Exception) { emptyMap() }
 
         val zoneId = ZoneId.systemDefault()
-        val startOfDay = selectedDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
-        val endOfDay = selectedDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        val startMillis = if (startTime != null) {
-            selectedDate.atTime(startTime!!).atZone(zoneId).toInstant().toEpochMilli()
-        } else startOfDay
+        // Start: beginning of startDate (or startTime if set)
+        val rangeStartMillis = if (startTime != null) {
+            startDate.atTime(startTime!!).atZone(zoneId).toInstant().toEpochMilli()
+        } else {
+            startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        }
 
-        val endMillis = if (endTime != null) {
-            selectedDate.atTime(endTime!!).atZone(zoneId).toInstant().toEpochMilli()
-        } else endOfDay
+        // End: end of endDate (or endTime applied to endDate if set)
+        val rangeEndMillis = if (endTime != null) {
+            endDate.atTime(endTime!!).atZone(zoneId).toInstant().toEpochMilli()
+        } else {
+            endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        }
 
-        val startTimestamp = Timestamp(startMillis / 1000, 0)
-        val endTimestamp = Timestamp(endMillis / 1000, 0)
+        val startTimestamp = Timestamp(rangeStartMillis / 1000, 0)
+        val endTimestamp = Timestamp(rangeEndMillis / 1000, 0)
 
-        val ordersForDay = try {
+        val ordersForRange = try {
             db.collection("orders")
                 .whereGreaterThanOrEqualTo("createdAt", startTimestamp)
                 .whereLessThan("createdAt", endTimestamp)
                 .get().await()
                 .documents.mapNotNull { it.toObject(AnalyticsOrder::class.java) }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
 
-        val riderOrders = ordersForDay.filter { it.riderId != null }.groupBy { it.riderId!! }
+        val riderOrders = ordersForRange.filter { it.riderId != null }.groupBy { it.riderId!! }
         riderStats = ridersMap.map { (riderId, riderName) ->
             val orders = riderOrders[riderId] ?: emptyList()
             RiderDailyStats(
@@ -121,7 +123,7 @@ fun AnalyticsScreen(navController: NavController) {
             )
         }.sortedByDescending { it.totalAssigned }
 
-        val restaurantOrders = ordersForDay.filter { it.restaurantId != null }.groupBy { it.restaurantId!! }
+        val restaurantOrders = ordersForRange.filter { it.restaurantId != null }.groupBy { it.restaurantId!! }
         restaurantStats = restaurantsMap.map { (restaurantId, restaurantName) ->
             RestaurantDailyStats(
                 restaurantId = restaurantId,
@@ -136,42 +138,48 @@ fun AnalyticsScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Daily Analytics") },
+                title = { Text("Analytics") },
                 actions = {
                     IconButton(onClick = { showTimeRangePicker = true }) {
                         Icon(Icons.Default.AccessTime, contentDescription = "Select Time Range")
                     }
-                    IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Select Date")
+                    IconButton(onClick = { showDatePickerFor = "start" }) {
+                        Icon(Icons.Default.CalendarMonth, contentDescription = "Select Date Range")
                     }
                 }
             )
         }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues)) {
-            val formatter = DateTimeFormatter.ofPattern("dd MMMM, yyyy")
+            val dateFormatter = DateTimeFormatter.ofPattern("dd MMM, yyyy")
 
-            Text(
-                "Showing stats for: ${selectedDate.format(formatter)}",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+            // --- DATE RANGE DISPLAY ---
+            if (startDate == endDate) {
+                Text(
+                    "Showing stats for: ${startDate.format(dateFormatter)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            } else {
+                Text(
+                    "From: ${startDate.format(dateFormatter)}  →  To: ${endDate.format(dateFormatter)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
 
+            // --- TIME RANGE DISPLAY ---
             if (startTime != null || endTime != null) {
                 val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
                 val startText = startTime?.format(timeFormatter) ?: "00:00"
                 val endText = endTime?.format(timeFormatter) ?: "23:59"
-
                 Text(
                     "Time range: $startText - $endText",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
-
-                TextButton(onClick = {
-                    startTime = null
-                    endTime = null
-                }, modifier = Modifier.padding(horizontal = 16.dp)) {
+                TextButton(onClick = { startTime = null; endTime = null },
+                    modifier = Modifier.padding(horizontal = 16.dp)) {
                     Text("Clear Time Filter")
                 }
             }
@@ -192,25 +200,27 @@ fun AnalyticsScreen(navController: NavController) {
                     0 -> RiderStatsContent(
                         stats = riderStats,
                         onRiderClick = { rider ->
-                            val dateMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                             val zoneId = ZoneId.systemDefault()
 
-                            // Calculate time range in milliseconds (pass null if no filter)
-                            val startMillis = if (startTime != null) {
-                                selectedDate.atTime(startTime!!).atZone(zoneId).toInstant().toEpochMilli()
-                            } else null
+                            // Pass the full date range as epoch millis to RiderDetailsScreen
+                            val rangeStartMillis = if (startTime != null) {
+                                startDate.atTime(startTime!!).atZone(zoneId).toInstant().toEpochMilli()
+                            } else {
+                                startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
+                            }
 
-                            val endMillis = if (endTime != null) {
-                                selectedDate.atTime(endTime!!).atZone(zoneId).toInstant().toEpochMilli()
-                            } else null
+                            val rangeEndMillis = if (endTime != null) {
+                                endDate.atTime(endTime!!).atZone(zoneId).toInstant().toEpochMilli()
+                            } else {
+                                endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+                            }
 
                             navController.navigate(
                                 Screen.RiderDetails.createRoute(
-                                    rider.riderId,
-                                    rider.riderName,
-                                    dateMillis,
-                                    startMillis,
-                                    endMillis
+                                    riderId = rider.riderId,
+                                    riderName = rider.riderName,
+                                    startDateMillis = rangeStartMillis,
+                                    endDateMillis = rangeEndMillis
                                 )
                             )
                         }
@@ -218,41 +228,79 @@ fun AnalyticsScreen(navController: NavController) {
                     1 -> RestaurantStatsContent(restaurantStats)
                 }
             }
-        }
 
-        if (showDatePicker) {
-            val datePickerState = rememberDatePickerState(
-                initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            )
-            DatePickerDialog(
-                onDismissRequest = { showDatePicker = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let {
-                            selectedDate = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-                        }
-                        showDatePicker = false
-                    }) { Text("OK") }
-                },
-                dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } }
-            ) {
-                DatePicker(state = datePickerState)
+            // --- DATE RANGE PICKERS ---
+            // Step 1: Pick start date
+            if (showDatePickerFor == "start") {
+                val datePickerState = rememberDatePickerState(
+                    initialSelectedDateMillis = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                )
+                DatePickerDialog(
+                    onDismissRequest = { showDatePickerFor = null },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            datePickerState.selectedDateMillis?.let {
+                                startDate = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                                // Ensure endDate is not before startDate
+                                if (endDate.isBefore(startDate)) endDate = startDate
+                            }
+                            showDatePickerFor = "end" // Move to end date picker
+                        }) { Text("Next: End Date") }
+                    },
+                    dismissButton = { TextButton(onClick = { showDatePickerFor = null }) { Text("Cancel") } }
+                ) {
+                    DatePicker(state = datePickerState, title = {
+                        Text("Select Start Date", modifier = Modifier.padding(start = 24.dp, top = 16.dp))
+                    })
+                }
             }
-        }
 
-        if (showTimeRangePicker) {
-            AnalyticsTimeRangePickerDialog(
-                startTime = startTime,
-                endTime = endTime,
-                onStartTimeSelected = { startTime = it },
-                onEndTimeSelected = { endTime = it },
-                onDismiss = { showTimeRangePicker = false }
-            )
+            // Step 2: Pick end date
+            if (showDatePickerFor == "end") {
+                val datePickerState = rememberDatePickerState(
+                    initialSelectedDateMillis = endDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    selectableDates = object : SelectableDates {
+                        override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                            // End date must be >= start date
+                            val picked = Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneId.of("UTC")).toLocalDate()
+                            return !picked.isBefore(startDate)
+                        }
+                    }
+                )
+                DatePickerDialog(
+                    onDismissRequest = { showDatePickerFor = null },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            datePickerState.selectedDateMillis?.let {
+                                endDate = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                            }
+                            showDatePickerFor = null
+                        }) { Text("Apply") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDatePickerFor = "start" }) { Text("Back") }
+                    }
+                ) {
+                    DatePicker(state = datePickerState, title = {
+                        Text("Select End Date", modifier = Modifier.padding(start = 24.dp, top = 16.dp))
+                    })
+                }
+            }
+
+            if (showTimeRangePicker) {
+                AnalyticsTimeRangePickerDialog(
+                    startTime = startTime,
+                    endTime = endTime,
+                    onStartTimeSelected = { startTime = it },
+                    onEndTimeSelected = { endTime = it },
+                    onDismiss = { showTimeRangePicker = false }
+                )
+            }
         }
     }
 }
 
-// ---------- FIXED TIME PICKER SECTION ----------
+// ---------- TIME PICKER SECTION (unchanged) ----------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnalyticsTimeRangePickerDialog(
@@ -271,10 +319,7 @@ fun AnalyticsTimeRangePickerDialog(
                 Text("Select Time Range", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(16.dp))
 
-                OutlinedButton(
-                    onClick = { showStartPicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                OutlinedButton(onClick = { showStartPicker = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.AccessTime, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(startTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Select Start Time")
@@ -282,10 +327,7 @@ fun AnalyticsTimeRangePickerDialog(
 
                 Spacer(Modifier.height(8.dp))
 
-                OutlinedButton(
-                    onClick = { showEndPicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                OutlinedButton(onClick = { showEndPicker = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.AccessTime, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(endTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Select End Time")
@@ -314,7 +356,6 @@ fun AnalyticsTimeRangePickerDialog(
             initialMinute = startTime?.minute ?: 0,
             is24Hour = true
         )
-
         AAnalyticsTimePickerDialog(
             onDismissRequest = { showStartPicker = false },
             confirmButton = {
@@ -324,9 +365,7 @@ fun AnalyticsTimeRangePickerDialog(
                 }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { showStartPicker = false }) { Text("Cancel") } }
-        ) {
-            TimePicker(state = timePickerState)
-        }
+        ) { TimePicker(state = timePickerState) }
     }
 
     if (showEndPicker) {
@@ -335,7 +374,6 @@ fun AnalyticsTimeRangePickerDialog(
             initialMinute = endTime?.minute ?: 59,
             is24Hour = true
         )
-
         AAnalyticsTimePickerDialog(
             onDismissRequest = { showEndPicker = false },
             confirmButton = {
@@ -345,9 +383,7 @@ fun AnalyticsTimeRangePickerDialog(
                 }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { showEndPicker = false }) { Text("Cancel") } }
-        ) {
-            TimePicker(state = timePickerState)
-        }
+        ) { TimePicker(state = timePickerState) }
     }
 }
 
@@ -373,12 +409,12 @@ fun AAnalyticsTimePickerDialog(
     }
 }
 
-// ---------- LISTS AND CARDS ----------
+// ---------- LISTS AND CARDS (unchanged) ----------
 @Composable
 fun RiderStatsContent(stats: List<RiderDailyStats>, onRiderClick: (RiderDailyStats) -> Unit) {
     if (stats.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No rider data for this day.")
+            Text("No rider data for this period.")
         }
     } else {
         LazyColumn(
@@ -396,7 +432,7 @@ fun RiderStatsContent(stats: List<RiderDailyStats>, onRiderClick: (RiderDailySta
 fun RestaurantStatsContent(stats: List<RestaurantDailyStats>) {
     if (stats.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No restaurant data for this day.")
+            Text("No restaurant data for this period.")
         }
     } else {
         LazyColumn(

@@ -27,19 +27,16 @@ sealed class Screen(val route: String) {
     object Store : Screen("store")
     object Analytics : Screen("analytics")
 
-    // UPDATED: Added startTimeMillis and endTimeMillis parameters
-    object RiderDetails : Screen("rider_details/{riderId}/{riderName}/{dateMillis}/{startTimeMillis}/{endTimeMillis}") {
+    // UPDATED: Route now carries startDateMillis and endDateMillis (full epoch ms range)
+    // startTimeMillis and endTimeMillis are gone — time filtering is baked into the range.
+    object RiderDetails : Screen("rider_details/{riderId}/{riderName}/{startDateMillis}/{endDateMillis}") {
         fun createRoute(
             riderId: String,
             riderName: String,
-            dateMillis: Long,
-            startTimeMillis: Long? = null,
-            endTimeMillis: Long? = null
+            startDateMillis: Long,
+            endDateMillis: Long
         ): String {
-            // Use -1 to indicate no time filter
-            val startMillis = startTimeMillis ?: -1L
-            val endMillis = endTimeMillis ?: -1L
-            return "rider_details/$riderId/$riderName/$dateMillis/$startMillis/$endMillis"
+            return "rider_details/$riderId/$riderName/$startDateMillis/$endDateMillis"
         }
     }
 
@@ -101,35 +98,36 @@ fun AppNavigation() {
             }
         }
     ) { innerPadding ->
-        NavHost(navController = navController, startDestination = Screen.Orders.route, modifier = Modifier.padding(innerPadding)) {
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Orders.route,
+            modifier = Modifier.padding(innerPadding)
+        ) {
             composable(Screen.Orders.route) { LiveOrdersScreen() }
             composable(Screen.MiniRestaurants.route) { CategoryManagementScreen(navController = navController) }
             composable(Screen.Store.route) { StoreManagementScreen(navController = navController) }
             composable(Screen.Analytics.route) { AnalyticsScreen(navController = navController) }
 
-            // UPDATED: Added startTimeMillis and endTimeMillis arguments
+            // UPDATED: Now uses startDateMillis + endDateMillis only
             composable(
                 route = Screen.RiderDetails.route,
                 arguments = listOf(
                     navArgument("riderId") { type = NavType.StringType },
                     navArgument("riderName") { type = NavType.StringType },
-                    navArgument("dateMillis") { type = NavType.LongType },
-                    navArgument("startTimeMillis") { type = NavType.LongType; defaultValue = -1L },
-                    navArgument("endTimeMillis") { type = NavType.LongType; defaultValue = -1L }
+                    navArgument("startDateMillis") { type = NavType.LongType },
+                    navArgument("endDateMillis") { type = NavType.LongType }
                 )
             ) { backStackEntry ->
                 val riderId = backStackEntry.arguments?.getString("riderId") ?: ""
                 val riderName = backStackEntry.arguments?.getString("riderName") ?: ""
-                val dateMillis = backStackEntry.arguments?.getLong("dateMillis") ?: 0L
-                val startTimeMillis = backStackEntry.arguments?.getLong("startTimeMillis") ?: -1L
-                val endTimeMillis = backStackEntry.arguments?.getLong("endTimeMillis") ?: -1L
+                val startDateMillis = backStackEntry.arguments?.getLong("startDateMillis") ?: 0L
+                val endDateMillis = backStackEntry.arguments?.getLong("endDateMillis") ?: 0L
 
                 RiderDetailsScreen(
                     riderId = riderId,
                     riderName = riderName,
-                    dateMillis = dateMillis,
-                    startTimeMillis = startTimeMillis,
-                    endTimeMillis = endTimeMillis,
+                    startDateMillis = startDateMillis,
+                    endDateMillis = endDateMillis,
                     navController = navController
                 )
             }

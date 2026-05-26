@@ -43,7 +43,7 @@ data class RiderOrderDetail(
     val deliveryCharge: Double = 0.0,
     val serviceCharge: Double = 0.0,
     val orderStatus: String = "",
-    val payment: String = "Online", // NEW: Payment field
+    val payment: String = "Online",
     val items: List<RiderOrderItem> = emptyList()
 )
 
@@ -52,7 +52,7 @@ data class DailyTotals(
     val totalGoodsValue: Double = 0.0,
     val totalDeliveryCharge: Double = 0.0,
     val totalServiceCharge: Double = 0.0,
-    val totalOnlineCollected: Double = 0.0 // NEW: Statistic for online payments
+    val totalOnlineCollected: Double = 0.0
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,78 +60,76 @@ data class DailyTotals(
 fun RiderDetailsScreen(
     riderId: String,
     riderName: String,
-    dateMillis: Long,
-    startTimeMillis: Long = -1L,
-    endTimeMillis: Long = -1L,
+    // UPDATED: Receives a pre-computed epoch-ms range (already includes time filter if set)
+    startDateMillis: Long,
+    endDateMillis: Long,
     navController: NavController
 ) {
     var orders by remember { mutableStateOf<List<RiderOrderDetail>>(emptyList()) }
     var dailyTotals by remember { mutableStateOf(DailyTotals()) }
     var isLoading by remember { mutableStateOf(true) }
-    val selectedDate = Instant.ofEpochMilli(dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+
+    // Derive LocalDate objects just for display purposes
+    val zoneId = ZoneId.systemDefault()
+    val startLocalDate = Instant.ofEpochMilli(startDateMillis).atZone(zoneId).toLocalDate()
+    val endLocalDate = Instant.ofEpochMilli(endDateMillis).atZone(zoneId).toLocalDate()
+        // endDateMillis is exclusive (start of next day), so subtract 1 day for display
+        .let { date ->
+            // If endDateMillis points exactly to midnight, the "last included day" is the day before
+            val endInstant = Instant.ofEpochMilli(endDateMillis).atZone(zoneId)
+            if (endInstant.toLocalTime().toSecondOfDay() == 0) date.minusDays(1) else date
+        }
 
     LaunchedEffect(key1 = Unit) {
-        val zoneId = ZoneId.systemDefault()
-        val startOfDay = selectedDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
-        val endOfDay = selectedDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val startTimestamp = Timestamp(startDateMillis / 1000, 0)
+        val endTimestamp = Timestamp(endDateMillis / 1000, 0)
 
-        val actualStartMillis = if (startTimeMillis > 0) startTimeMillis else startOfDay
-        val actualEndMillis = if (endTimeMillis > 0) endTimeMillis else endOfDay
+        val acceptedOrders = try {
+            Firebase.firestore.collection("orders")
+                .whereEqualTo("riderId", riderId)
+                .whereGreaterThanOrEqualTo("createdAt", startTimestamp)
+                .whereLessThan("createdAt", endTimestamp)
+                .get()
+                .await()
+                .documents.mapNotNull { doc ->
+                    val status = doc.getString("orderStatus") ?: ""
+                    if (status in listOf("Pending", "Rejected", "Cancelled")) return@mapNotNull null
 
-        val startTimestamp = Timestamp(actualStartMillis / 1000, 0)
-        val endTimestamp = Timestamp(actualEndMillis / 1000, 0)
+                    val itemsData = doc.get("items") as? List<Map<String, Any>> ?: emptyList()
+                    val mappedItems = itemsData.map { itemMap ->
+                        RiderOrderItem(
+                            itemName = itemMap["itemName"] as? String ?: "Unknown Item",
+                            quantity = (itemMap["quantity"] as? Long)?.toInt() ?: 0,
+                            miniResName = itemMap["miniResName"] as? String ?: "",
+                            price = (itemMap["itemPrice"] as? Number)?.toDouble()
+                                ?: (itemMap["price"] as? Number)?.toDouble() ?: 0.0,
+                            partnerStatus = itemMap["partnerStatus"] as? String
+                        )
+                    }
 
-        val acceptedOrders = Firebase.firestore.collection("orders")
-            .whereEqualTo("riderId", riderId)
-            .whereGreaterThanOrEqualTo("createdAt", startTimestamp)
-            .whereLessThan("createdAt", endTimestamp)
-            .get()
-            .await()
-            .documents.mapNotNull { doc ->
-                val status = doc.getString("orderStatus") ?: ""
-                if (status in listOf("Pending", "Rejected", "Cancelled")) {
-                    return@mapNotNull null
-                }
-                val itemsData = doc.get("items") as? List<Map<String, Any>> ?: emptyList()
-
-                val mappedItems = itemsData.map { itemMap ->
-                    RiderOrderItem(
-                        itemName = itemMap["itemName"] as? String ?: "Unknown Item",
-                        quantity = (itemMap["quantity"] as? Long)?.toInt() ?: 0,
-                        miniResName = itemMap["miniResName"] as? String ?: "",
-                        price = (itemMap["itemPrice"] as? Number)?.toDouble()
-                            ?: (itemMap["price"] as? Number)?.toDouble() ?: 0.0,
-                        partnerStatus = itemMap["partnerStatus"] as? String
+                    RiderOrderDetail(
+                        id = doc.id,
+                        restaurantName = doc.getString("restaurantName") ?: "N/A",
+                        userName = doc.getString("userName") ?: "N/A",
+                        userPhone = doc.getString("userPhone") ?: "N/A",
+                        userSubLocation = doc.getString("userSubLocation") ?: "No address detail",
+                        totalPrice = doc.getDouble("totalPrice") ?: 0.0,
+                        deliveryCharge = doc.getDouble("deliveryCharge") ?: 0.0,
+                        serviceCharge = doc.getDouble("serviceCharge") ?: 0.0,
+                        orderStatus = status,
+                        payment = doc.getString("payment") ?: "Online",
+                        items = mappedItems
                     )
                 }
-
-                RiderOrderDetail(
-                    id = doc.id,
-                    restaurantName = doc.getString("restaurantName") ?: "N/A",
-                    userName = doc.getString("userName") ?: "N/A",
-                    userPhone = doc.getString("userPhone") ?: "N/A",
-                    userSubLocation = doc.getString("userSubLocation") ?: "No address detail",
-                    totalPrice = doc.getDouble("totalPrice") ?: 0.0,
-                    deliveryCharge = doc.getDouble("deliveryCharge") ?: 0.0,
-                    serviceCharge = doc.getDouble("serviceCharge") ?: 0.0,
-                    orderStatus = status,
-                    payment = doc.getString("payment") ?: "Online", // NEW: Fetching payment
-                    items = mappedItems
-                )
-            }
+        } catch (e: Exception) { emptyList() }
 
         orders = acceptedOrders
 
-        // --- CALCULATION LOGIC UPDATED ---
         val itemsCount = acceptedOrders.sumOf { order -> order.items.sumOf { it.quantity } }
         val deliveryChargeSum = acceptedOrders.sumOf { it.deliveryCharge }
         val serviceChargeSum = acceptedOrders.sumOf { it.serviceCharge }
         val goodsValueSum = acceptedOrders.sumOf { it.totalPrice - it.deliveryCharge - it.serviceCharge }
-
-        // NEW: Calculate Online Collected (Any order that is NOT COD)
-        val onlineCollectedSum = acceptedOrders
-            .filter { it.payment != "COD" }
-            .sumOf { it.totalPrice }
+        val onlineCollectedSum = acceptedOrders.filter { it.payment != "COD" }.sumOf { it.totalPrice }
 
         dailyTotals = DailyTotals(
             totalItems = itemsCount,
@@ -144,17 +142,41 @@ fun RiderDetailsScreen(
         isLoading = false
     }
 
+    val dateFormatter = DateTimeFormatter.ofPattern("dd MMM, yyyy")
+
+    // Build the subtitle shown in the top bar
+    val dateRangeLabel = if (startLocalDate == endLocalDate) {
+        startLocalDate.format(dateFormatter)
+    } else {
+        "${startLocalDate.format(dateFormatter)} → ${endLocalDate.format(dateFormatter)}"
+    }
+
+    // Detect whether time filtering was used (i.e. start isn't midnight or end isn't midnight)
+    val startIsExactMidnight = Instant.ofEpochMilli(startDateMillis).atZone(zoneId).toLocalTime().toSecondOfDay() == 0
+    val endIsExactMidnight = Instant.ofEpochMilli(endDateMillis).atZone(zoneId).toLocalTime().toSecondOfDay() == 0
+    val hasTimeFilter = !startIsExactMidnight || !endIsExactMidnight
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
                         Text(riderName)
-                        if (startTimeMillis > 0 || endTimeMillis > 0) {
+                        Text(
+                            text = dateRangeLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        // Show time filter subtitle if applicable
+                        if (hasTimeFilter) {
                             val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-                            val startText = if (startTimeMillis > 0) Instant.ofEpochMilli(startTimeMillis).atZone(ZoneId.systemDefault()).toLocalTime().format(timeFormatter) else "00:00"
-                            val endText = if (endTimeMillis > 0) Instant.ofEpochMilli(endTimeMillis).atZone(ZoneId.systemDefault()).toLocalTime().format(timeFormatter) else "23:59"
-                            Text("Time: $startText - $endText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val startTime = Instant.ofEpochMilli(startDateMillis).atZone(zoneId).toLocalTime()
+                            val endTime = Instant.ofEpochMilli(endDateMillis).atZone(zoneId).toLocalTime()
+                            Text(
+                                "Time: ${startTime.format(timeFormatter)} – ${endTime.format(timeFormatter)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 },
@@ -177,19 +199,27 @@ fun RiderDetailsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    val formatter = DateTimeFormatter.ofPattern("dd MMMM, yyyy")
-                    Text("Accepted Orders on ${selectedDate.format(formatter)}", style = MaterialTheme.typography.titleLarge)
+                    // Header: show range or single day label
+                    val headerLabel = if (startLocalDate == endLocalDate) {
+                        "Accepted Orders on ${startLocalDate.format(dateFormatter)}"
+                    } else {
+                        "Accepted Orders: $dateRangeLabel"
+                    }
+                    Text(headerLabel, style = MaterialTheme.typography.titleLarge)
                     Spacer(modifier = Modifier.height(8.dp))
                     SummaryCard(totals = dailyTotals)
                     Spacer(modifier = Modifier.height(16.dp))
-                    if(orders.isNotEmpty()){
+                    if (orders.isNotEmpty()) {
                         Text("Order List (${orders.size})", style = MaterialTheme.typography.titleMedium)
                     }
                 }
-                if (orders.isEmpty()){
+                if (orders.isEmpty()) {
                     item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center){
-                            Text("No orders found for this rider on this day.")
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No orders found for this rider in the selected period.")
                         }
                     }
                 } else {
@@ -206,7 +236,7 @@ fun RiderDetailsScreen(
 fun SummaryCard(totals: DailyTotals) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SummaryRow("Total Items Handled", "${totals.totalItems}")
@@ -217,7 +247,6 @@ fun SummaryCard(totals: DailyTotals) {
             HorizontalDivider()
             SummaryRow("Total Service Charge", "৳${"%.2f".format(totals.totalServiceCharge)}")
             HorizontalDivider()
-            // NEW: Online Collected Row
             SummaryRow("Total Online Collected", "৳${"%.2f".format(totals.totalOnlineCollected)}", highlight = true)
         }
     }
@@ -242,7 +271,6 @@ fun SummaryRow(label: String, value: String, highlight: Boolean = false) {
 
 @Composable
 fun OrderDetailCard(order: RiderOrderDetail) {
-    // State to control the visibility of the payment detail dialog
     var showPaymentDialog by remember { mutableStateOf(false) }
 
     val statusColor = when (order.orderStatus) {
@@ -252,7 +280,6 @@ fun OrderDetailCard(order: RiderOrderDetail) {
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    // --- Payment Detail Dialog ---
     if (showPaymentDialog) {
         AlertDialog(
             onDismissRequest = { showPaymentDialog = false },
@@ -265,17 +292,12 @@ fun OrderDetailCard(order: RiderOrderDetail) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showPaymentDialog = false }) {
-                    Text("OK")
-                }
+                TextButton(onClick = { showPaymentDialog = false }) { Text("OK") }
             }
         )
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -289,20 +311,17 @@ fun OrderDetailCard(order: RiderOrderDetail) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.width(8.dp))
-
-                    // --- Clickable Payment Badge ---
                     Surface(
-                        color = if(order.payment == "COD") Color.Red.copy(alpha = 0.1f) else Color.Blue.copy(alpha = 0.1f),
+                        color = if (order.payment == "COD") Color.Red.copy(alpha = 0.1f) else Color.Blue.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(4.dp),
-                        onClick = { showPaymentDialog = true } // Trigger the dialog
+                        onClick = { showPaymentDialog = true }
                     ) {
                         Text(
-                            // Logic: Show "COD" if it's COD, otherwise just show "Online" on the card
                             text = if (order.payment == "COD") "COD" else "Online",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = if(order.payment == "COD") Color.Red else Color.Blue
+                            color = if (order.payment == "COD") Color.Red else Color.Blue
                         )
                     }
                 }
@@ -350,7 +369,6 @@ fun OrderDetailCard(order: RiderOrderDetail) {
                             } else {
                                 "${item.quantity}x ${item.itemName}"
                             }
-
                             Text(text = displayText, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
 
                             if (!item.partnerStatus.isNullOrBlank()) {
@@ -395,13 +413,11 @@ fun OrderDetailCard(order: RiderOrderDetail) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Optional: Small label indicating the card payment type
                 Text(
-                    text = if(order.payment == "COD") "Cash Collection" else "Paid Online",
+                    text = if (order.payment == "COD") "Cash Collection" else "Paid Online",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.Gray
                 )
-
                 Row {
                     Text("Total Bill: ", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
