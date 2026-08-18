@@ -44,5 +44,6 @@ data class StoreItem(
     val additionalDeliveryCharge: Double = 0.0,
     val additionalServiceCharge: Double = 0.0,
     val stock: String = "yes", // "yes" or "no"
-    val priority: Int = 0 // Added Priority
+    val priority: Int = 0, // Added Priority
+    val extraCharge: Int = 0 // NEW: Extra charge
 )

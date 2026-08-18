@@ -30,7 +30,8 @@ data class RiderOrderItem(
     val quantity: Int = 0,
     val miniResName: String = "N/A",
     val price: Double = 0.0,
-    val partnerStatus: String? = null
+    val partnerStatus: String? = null,
+    val extraCharge: Int = 0 // NEW: Extra charge for this item
 )
 
 data class RiderOrderDetail(
@@ -52,6 +53,7 @@ data class DailyTotals(
     val totalGoodsValue: Double = 0.0,
     val totalDeliveryCharge: Double = 0.0,
     val totalServiceCharge: Double = 0.0,
+    val totalExtraCharge: Int = 0, // NEW: Total extra charge across all items
     val totalOnlineCollected: Double = 0.0
 )
 
@@ -103,7 +105,8 @@ fun RiderDetailsScreen(
                             miniResName = itemMap["miniResName"] as? String ?: "",
                             price = (itemMap["itemPrice"] as? Number)?.toDouble()
                                 ?: (itemMap["price"] as? Number)?.toDouble() ?: 0.0,
-                            partnerStatus = itemMap["partnerStatus"] as? String
+                            partnerStatus = itemMap["partnerStatus"] as? String,
+                            extraCharge = (itemMap["extraCharge"] as? Number)?.toInt() ?: 0
                         )
                     }
 
@@ -130,12 +133,15 @@ fun RiderDetailsScreen(
         val serviceChargeSum = acceptedOrders.sumOf { it.serviceCharge }
         val goodsValueSum = acceptedOrders.sumOf { it.totalPrice - it.deliveryCharge - it.serviceCharge }
         val onlineCollectedSum = acceptedOrders.filter { it.payment != "COD" }.sumOf { it.totalPrice }
+        // NEW: Sum of extra charge across all items in all orders
+        val extraChargeSum = acceptedOrders.sumOf { order -> order.items.sumOf { it.extraCharge } }
 
         dailyTotals = DailyTotals(
             totalItems = itemsCount,
             totalGoodsValue = goodsValueSum,
             totalDeliveryCharge = deliveryChargeSum,
             totalServiceCharge = serviceChargeSum,
+            totalExtraCharge = extraChargeSum,
             totalOnlineCollected = onlineCollectedSum
         )
 
@@ -246,6 +252,8 @@ fun SummaryCard(totals: DailyTotals) {
             SummaryRow("Total Delivery Charge", "৳${"%.2f".format(totals.totalDeliveryCharge)}")
             HorizontalDivider()
             SummaryRow("Total Service Charge", "৳${"%.2f".format(totals.totalServiceCharge)}")
+            HorizontalDivider()
+            SummaryRow("Total Extra Charge", "৳${totals.totalExtraCharge}")
             HorizontalDivider()
             SummaryRow("Total Online Collected", "৳${"%.2f".format(totals.totalOnlineCollected)}", highlight = true)
         }
@@ -396,12 +404,21 @@ fun OrderDetailCard(order: RiderOrderDetail) {
                             }
                         }
 
-                        Text(
-                            text = "৳${"%.1f".format(item.price * item.quantity)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "৳${"%.1f".format(item.price * item.quantity)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (item.extraCharge > 0) {
+                                Text(
+                                    text = "+৳${item.extraCharge} extra",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
                     }
                 }
             }

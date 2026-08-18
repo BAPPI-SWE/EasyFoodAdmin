@@ -319,6 +319,8 @@ fun AddEditStoreItemDialog(
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var deliveryCharge by remember { mutableStateOf(item?.additionalDeliveryCharge?.toString() ?: "0") }
     var serviceCharge by remember { mutableStateOf(item?.additionalServiceCharge?.toString() ?: "0") }
+    // NEW: Extra Charge field
+    var extraCharge by remember { mutableStateOf(item?.extraCharge?.toString() ?: "0") }
 
     // UPDATED: Priority state
     var priority by remember { mutableStateOf(item?.priority?.toString() ?: "1") }
@@ -572,6 +574,13 @@ fun AddEditStoreItemDialog(
                         label = { Text("Additional Service Charge") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
+                    // NEW: Extra Charge field
+                    TextField(
+                        value = extraCharge,
+                        onValueChange = { if (it.all { char -> char.isDigit() }) extraCharge = it },
+                        label = { Text("Extra Charge") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         if (item != null && onDelete != null) {
@@ -633,7 +642,8 @@ fun AddEditStoreItemDialog(
                                     "miniRes" to fixedMiniResId,
                                     "subCategory" to fixedSubCategory,
                                     "stock" to (item?.stock ?: "yes"),
-                                    "priority" to (priority.toIntOrNull() ?: 0) // UPDATED: Save priority
+                                    "priority" to (priority.toIntOrNull() ?: 0), // UPDATED: Save priority
+                                    "extraCharge" to (extraCharge.toIntOrNull() ?: 0) // NEW: Save extra charge
                                 )
 
                                 if (hasMultiVariant) {
